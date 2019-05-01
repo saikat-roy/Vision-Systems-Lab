@@ -20,7 +20,7 @@ class SoftmaxRegression:
         """
         return np.exp(x) / np.sum(np.exp(x))
 
-    def fit(self, x, y):
+    def fit(self, x, y, batch_size=20):
         """
         Fit the softmax regression model to data. Final usage as classification or regression model irrelevant here.
 
