@@ -1,6 +1,9 @@
 import numpy as np
 import numpy.matlib
 import pickle
+import torchvision.transforms as transforms
+import torchvision.datasets as dsets
+
 
 class SoftmaxRegression:
 
@@ -108,9 +111,6 @@ def calculate_acc(y, y_hat):
 
 if __name__ == "__main__":
 
-    import torchvision.transforms as transforms
-    import torchvision.datasets as dsets
-
     train_dataset = dsets.MNIST(root='./data', train=True, transform=transforms.ToTensor(), download=True)
     test_dataset = dsets.MNIST(root='./data', train=False, transform=transforms.ToTensor(), download=True)
 
@@ -120,8 +120,10 @@ if __name__ == "__main__":
     test_x = test_dataset.test_data.numpy()
     test_y = test_dataset.test_labels.numpy()
 
-    train_x = np.reshape(train_x, (60000,-1))
-    train_y = np.reshape(test_x, (60000,-1))
+    print(train_x.shape, test_x.shape)
+
+    train_x = np.reshape(train_x, (train_x.shape[0],-1))
+    test_x = np.reshape(test_x, (test_x.shape[0],-1))
 
     train_x = (train_x-np.mean(train_x,0))/(np.std(train_x,0)+0.00001)
     train_one_hot_targets = np.eye(max(train_y)+1)[np.reshape(train_y,-1)]
@@ -135,6 +137,8 @@ if __name__ == "__main__":
 
     model.fit(train_x, train_one_hot_targets, iters=100, batch_size=20)
 
+    with open("SRmodel.pkl", 'wb') as f:
+        pickle.dump(model, f)
 
     print("Final Train Acc.")
     preds = model.predict(train_x, False)
