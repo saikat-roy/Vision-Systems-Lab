@@ -5,6 +5,6 @@ Repository of the CudaVision Lab at University of Bonn (SS19) implemented (mostl
 Involves using softmax regression with manual gradient calculation for classifying the MNIST dataset. Training and test set accuracies after a simple 5 iteration run was `0.8931` and `0.8866` respectively.
 
 ### Project 2: Multilayer Neural Network
-Involves training simple multilayer neural networks using vanilla SGD on PyTorch with k-fold cross validation for hyperparameter search. Classification was done on the CIFAR-10 dataset. A confusion matrix after a simple 50 iteration run on a `3072-128-128-10` architecture is given below, with a training and test set accuracy of `0.6647` and `0.5117` respectively.
+Involves training simple multilayer neural networks using vanilla SGD on PyTorch with k-fold monte-carlo cross validation for hyperparameter (learning rate and batch size) search. Classification was done on the CIFAR-10 dataset. A confusion matrix after a simple 50 iteration run on a `3072-128-128-10` architecture is given below, with a training and test set accuracy of `0.6647` and `0.5117` respectively.
 
 ![](https://github.com/saikat-roy/Vision-Systems-Lab/blob/master/Project2/conf_mat.png "Confusion Matrix after 50 iterations on a simple network")
