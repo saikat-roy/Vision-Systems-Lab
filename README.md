@@ -18,7 +18,7 @@ Also tested were different non-linearities for the hidden units.
 
 ![](https://github.com/saikat-roy/Vision-Systems-Lab/blob/master/Project3/nonlins.png "Training with different non-linearities")
 
-In each case, the results were kind of counterintuitive as `SGD` and `sigmoid` performed the best. However, it might be possible that the convergence rates simply might be different. Additionally, with the network being this shallow, the benefits of the non-linearities and optimizers used typically in 'Deep' networks might simply not reflect on a network of this scale.
+In each case, the results were kind of counterintuitive as `SGD` and `sigmoid` performed the best. However, it might be possible that the convergence rates simply might be different. Additionally, with the network being this shallow, the benefits of the non-linearities used typically in 'Deep' networks might simply not reflect on a network of this scale. And if run long enough, `SGD` generally converges to a better minima than other optimizers like `Adam`.
 
 ### Project 4: Convolutional Neural Networks
 The project introduces one to convolutional neural networks and applied a CNN on the CIFAR-10 dataset.
