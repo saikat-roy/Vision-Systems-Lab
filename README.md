@@ -1,4 +1,4 @@
-# Vision Systems Lab: Learning Computer Vision on GPUs
+# Vision Systems Lab: Learning Computer Vision on GPUs [Readme not updated regularly]
 Repository of the CudaVision Lab at University of Bonn (SS19) implemented (mostly) on PyTorch, Python3 and Jupyter notebooks. The project begins from the basics of neural networks and continues to deeper models. The following projects are contained in the respective folders:
 
 ### Project 1: Softmax Regression (without autograd/Pytorch Tensors)
