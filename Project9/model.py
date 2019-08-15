@@ -85,6 +85,6 @@ class NimbroNet(nn.Module):
         self.res1 = conv1x1(64, 128)
         self.res2 = conv1x1(128, 128)
         self.res3 = conv1x1(256, 128)
-        self.upsample1 =
+        # self.upsample1 =
 
-    def forward(self, x):
+    # def forward(self, x):
