@@ -1,90 +1,101 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torchvision.models.resnet import ResNet, BasicBlock
 
-
-def conv3x3(in_channels, out_channels, stride=1):
-    return nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride)
+def convtrans3x3(in_channels, out_channels, stride=2):
+    return nn.ConvTranspose2d(in_channels, out_channels, kernel_size=3, stride=stride)
 
 def conv1x1(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride)
 
+class Resnet18Encoder(ResNet):
 
-class BasicBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, downsample=True):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(in_channels, out_channels, stride=2)
-        self.bn1 = nn.BatchNorm2d(out_channels, out_channels)
-        self.conv2 = conv3x3(out_channels, out_channels, stride=2)
-        self.bn2 = nn.BatchNorm2d(out_channels, out_channels)
-        self.relu = nn.ReLU(inplace=True)
+    def __init__(self, freeze=False, *args, **kwargs):
+        # Initializing Resnet18 using similar initializations as torch model zoo
+        super(Resnet18Encoder, self).__init__(BasicBlock, [2, 2, 2, 2], *args, **kwargs)
 
-        self.downsample = None
-        if downsample:
-            self.downsample = conv1x1(in_channels, out_channels, stride=2)
+        print(list(self.children()))
+        # Loading from pretrained model
+        self.load_state_dict(torch.load('./resnet18-5c106cde.pth'))
 
-    def forward(self, x):
+        # Deleting unncessary layers
+        del self.avgpool
+        del self.fc
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
+        # Can freeze training if needed
+        if freeze:
+            self.freeze()
 
-        if self.downsample is not None:
-            x = self.downsample(x)
-        out = out+x
-        return out
+    def freeze(self):
+        # Freezes the weights of the entire encoder
+        for child in self.children():
+            for param in child.parameters():
+                param.requires_grad = False
 
-
-
-class Resnet18(nn.Module):
-    def __init__(self, input_channels):
-        super(Resnet18, self).__init__()
-        # Layer 1
-        self.block1 = nn.Sequential(nn.Conv2d(input_channels, 64, kernel_size=7, stride=2),
-                                    nn.BatchNorm2d(64), nn.ReLU(inplace=True),
-                                    nn.MaxPool2d(kernel_size=3, stride=2))
-
-        # Layer 2
-        self.block2 = nn.Sequential(BasicBlock(64, 64, downsample=True),
-                                    BasicBlock(64, 64, downsample=False))
-        # Layer 3
-        self.block3 = nn.Sequential(BasicBlock(64, 128, downsample=True),
-                                    BasicBlock(128, 128, downsample=False))
-
-        # Layer 4
-        self.block4 = nn.Sequential(BasicBlock(128, 256, downsample=True),
-                                    BasicBlock(256, 256, downsample=False))
-
-        # Layer 5
-        self.block2 = nn.Sequential(BasicBlock(256, 512, downsample=True),
-                                    BasicBlock(512, 512, downsample=False))
+    def unfreeze(self):
+        # Unfreezes the weights of the encoder
+        for child in self.children():
+            for param in child.parameters():
+                param.requires_grad = True
 
     def forward(self, x):
+        # Overriding the forward method
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
 
-        out1 = self.block1(x)
-        out1 = self.block2(out1)
-        out2 = self.block3(out1)
-        out3 = self.block4(out2)
-        out4 = self.block5(out3)
+        x1 = self.layer1(x)
+        x2 = self.layer2(x1)
+        x3 = self.layer3(x2)
+        x4 = self.layer4(x3)
 
-        return out1, out2, out3, out4
-
+        # x = self.avgpool(x)
+        # x = torch.flatten(x, 1)
+        # x = self.fc(x)
+        return x1, x2, x3, x4
 
 class DecoderBlock(nn.Module):
 
     def __init__(self):
         super(DecoderBlock, self).__init__()
-        
+        self.convtrans4 = convtrans3x3(512, 128)
+        self.convtrans3 = convtrans3x3(256, 128)
+        self.convtrans2 = convtrans3x3(256, 128)
+        self.convtrans1 = convtrans3x3(256, 3)
+        self.bn3 = nn.BatchNorm2d(256)
+        self.bn2 = nn.BatchNorm2d(256)
+        self.bn1 = nn.BatchNorm2d(256)
 
+    def forward(self, x1, x2, x3, x4):
+        x = self.convtrans4(F.relu(x4, inplace=True))
+        x = torch.cat((x,x3), dim=1)
+        # NOT sure if relu should go first or bn here. Fig says relu
+        x = self.convtrans3(self.bn3(F.relu(x)))
+        x = torch.cat((x, x2), dim=1)
+        x = self.convtrans2(self.bn2(F.relu(x)))
+        x = torch.cat((x, x1), dim=1)
+        x = self.convtrans1(self.bn1(F.relu(x)))
+        return x
 
 class NimbroNet(nn.Module):
 
     def __init__(self, in_channels, out_channels):
+        super(NimbroNet, self).__init__()
         self.res1 = conv1x1(64, 128)
         self.res2 = conv1x1(128, 128)
         self.res3 = conv1x1(256, 128)
-        # self.upsample1 =
+        self.encoder = Resnet18Encoder(freeze=True)
+        self.decoder = DecoderBlock()
 
-    # def forward(self, x):
+    def forward(self, x):
+        x1, x2, x3, x4 = self.encoder(x)
+        x1 = self.res1(x1)
+        x2 = self.res2(x2)
+        x3 = self.res3(x3)
+        x = self.decoder(x1, x2, x3, x4)
+
+if __name__ == "__main__":
+    m = NimbroNet()
+
