@@ -68,6 +68,13 @@ class CudaVisionDataset(Dataset):
         return len(self.img_paths)
 
 
+class CudavisionDataloader:
+
+    def __call__(self, dir_path='./data/Images', batch_size=2):
+        dataset = CudaVisionDataset(dir_path)
+        return DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+
 def centre_and_place(arr, g, rad, coords):
 
     lt = int(rad/2)
