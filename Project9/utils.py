@@ -120,6 +120,7 @@ def parse_annotations(fname):
 def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_folder_name='json'):
     img_paths = []
     annot_paths = []
+
     #img_dir_path += '/Images/'
     if os.path.isdir(img_dir_path):
         print("Folder exists. Reading..")
@@ -135,7 +136,7 @@ def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_fold
     for index, f in enumerate(img_paths):
         f_split = f.split("/")
         f_split[-1] = f_split[-1].replace(img_format, annot_format)
-        f_split[3] = annot_folder_name
+        f_split[-2] = annot_folder_name
         # print(f_split)
         annot_path = os.path.join(*f_split)
 
@@ -156,3 +157,4 @@ if __name__ == "__main__":
     dataset = CudaVisionDataset('./data/Images')
     for i in enumerate(dataset):
         print(0)
+
