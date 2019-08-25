@@ -6,10 +6,11 @@ import numpy as np
 import cv2
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 
 class CudaVisionDataset(Dataset):
 
-    def __init__(self, dir_path, no_of_classes=4, channel_lut=None, blob_rad = 5):
+    def __init__(self, dir_path, no_of_classes=4, channel_lut=None, blob_rad = 15):
         """
         :param dir_path:
         :param no_of_classes:
@@ -58,6 +59,9 @@ class CudaVisionDataset(Dataset):
         img = np.moveaxis(img,2,0) # cv2 images are l X w X c
 
         img = torch.Tensor(img)
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+        img = normalize(img)
         targets = torch.Tensor(targets)
 
         return img, targets
