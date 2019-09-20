@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.resnet import ResNet, BasicBlock
-
-
 def convtrans3x3(in_channels, out_channels, stride=2):
     return nn.ConvTranspose2d(in_channels, out_channels, kernel_size=3, stride=stride)
 

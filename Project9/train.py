@@ -1,28 +1,19 @@
-import numpy as np
-import math
-import torch
-import torch.nn.functional as F
-import torch.nn as nn
-from torch.utils.data import dataloader, random_split
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision.models.resnet import ResNet, BasicBlock
-
-from torchvision import datasets, transforms
-
-import matplotlib.pyplot as plt
-from sklearn.model_selection import ParameterGrid
-import cv2
-import time
-
 import sys
 
 sys.path.append("E:/Vision-Systems-Lab/Project9/")
 
-from model import *
-from utils import *
+from model import NimbroNet
+from utils import CudaVisionDataset
 
+import numpy as np
+from torch.utils.data import dataloader, random_split
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+import cv2
+import time
+import matplotlib
 import random
 
 random.seed(12345)
@@ -30,7 +21,7 @@ np.set_printoptions(threshold=sys.maxsize)
 
 
 def train(train_dataloader, valid_dataloader, iters=20, suppress_output=False,
-          model_save_path="best.pth"):
+          gray_thresh=0, model_save_path="best.pth"):
     """
     Trains the model on the given dataloader and returns the loss per epoch
     """
@@ -39,6 +30,9 @@ def train(train_dataloader, valid_dataloader, iters=20, suppress_output=False,
     valid_acc_l = []
     best_valid_acc = 0.0
     equiv_train_acc = 0.0
+    best_false_positive = 0.0
+    best_true_positive = 0.0
+    best_false_negative = 0.0
     for itr in range(iters):
         av_itr_loss = 0.0
         model.train()
@@ -55,24 +49,30 @@ def train(train_dataloader, valid_dataloader, iters=20, suppress_output=False,
             av_itr_loss += (1 / y.size(0)) * batch_loss.item()
         loss_l.append(av_itr_loss)
 
-        _, _, train_acc = acc(train_dataloader)
-        _, _, valid_acc = acc(valid_dataloader)
+        _, _, train_acc, _, _, _ = acc(train_dataloader, itr)
+        _, _, valid_acc, t_p, f_p, f_n = acc(valid_dataloader, itr)
 
         if not suppress_output:
-            if itr % 1 == 0 or itr == iters - 1:
+            if itr % 10 == 0 or itr == iters - 1:
                 print("Epoch {}: Loss={}, Training Accuracy:{}, Validation Accuracy:{}"
                       .format(itr, av_itr_loss, train_acc, valid_acc))
+                for chan in range(t_p.shape[0]):
+                    print('Chan: ', chan, ' True: ', t_p[chan], '\t FP: ', f_p[chan], '\t FN: ', f_n[chan])
         train_acc_l.append(train_acc)
         valid_acc_l.append(valid_acc)
         if valid_acc > best_valid_acc:
             best_valid_acc = valid_acc
             equiv_train_acc = train_acc
+            best_false_positive = np.average(f_p)
+            best_true_positive = np.average(t_p)
+            best_false_negative = np.average(f_n)
+            valid_acc_l.append(valid_acc)
             torch.save(model.state_dict(), model_save_path)
 
-    model.load_state_dict(torch.load(model_save_path))
+        #    model.load_state_dict(torch.load(model_save_path))
 
     #   return loss_l, train_acc_l, valid_acc_l
-    return loss_l, equiv_train_acc, best_valid_acc
+    return loss_l, equiv_train_acc, best_valid_acc, best_true_positive, best_false_positive, best_false_negative
 
 
 def get_boxes(img, threshold):
@@ -89,17 +89,18 @@ def get_boxes(img, threshold):
 
 
 def write(x, name):
-    arr = np.array((x))
+    arr = np.array(x)
     for i in range(x.shape[0]):
         with open(name + '.txt', 'a') as the_file:
             the_file.write(np.array2string(arr[i]))
             the_file.write('\n')
 
 
-
-def acc(dataloader, tresh=20):
+def acc(dataloader, itr, tresh=4, gray_thresh=0.4):
     """
     Calculate accuracy of predictions from model for dataloader.
+    :param gray_thresh:
+    :param tresh:
     :param dataloader: dataloader to evaluate
     :return:
     """
@@ -108,164 +109,110 @@ def acc(dataloader, tresh=20):
     pred_y = []
     total = 0.0
     model.eval()
-    f_p = 0  # False Positive
-    f_n = 0  # False Negative
-    true = 0
-
-
+    f_p = np.zeros(6)  # False Positive
+    f_n = np.zeros(6)  # False Negative
+    true = np.zeros(6)
     with torch.no_grad():
         for batch_id, (x, y) in enumerate(dataloader):
             x = x.cuda()
             y = y.cuda()
-            y = F.pad(y, (4, 5, 7, 6, 0, 0, 0, 0), mode='constant', value=0)
+            # y = F.pad(y, (4, 5, 7, 6, 0, 0, 0, 0), mode='constant', value=0)
 
             preds = model(x).cpu().numpy()
 
-            # preds = torch.argmax(preds, dim=1)  # ??
-            # For each channel
-            acc_chan = np.zeros(preds.shape[1])
-            for chan in range(preds.shape[1]):
-                # write(preds.cpu()[0, chan], 'preds')
-                # write(y.cpu()[0, chan], 'truth')
-                # Erosion
-                kernel = np.ones((3, 3), np.uint8)
-                (_, preds_thresh) = cv2.threshold(preds[0, chan], 0.4, 255, 0)
-                preds_erosion = cv2.erode(preds_thresh, kernel, iterations=1)
+            for b_id in range(dataloader.batch_size):
+                acc_chan = np.zeros(preds.shape[1])
 
-                # Dilation
-                preds_dilation = cv2.dilate(preds_erosion, kernel, iterations=1)
+                for chan in range(preds.shape[1]):
 
-                """                                                                                 ???
-                After thresholding each
-                output channel, we apply morphological erosion and dilation
-                to eliminate negligible responses. Finally, we compute the
-                object center coordinates from the achieved contours.
-                """
-
-                # Contour Detection
-                #                 print(np.unique(preds_dilation))
-
-                # preds_dilation = np.expand_dims(preds_dilation, axis=2)
-                # write(preds_dilation, 'preds_d')
-                image, contours_p, _ = cv2.findContours((preds_dilation).astype(np.uint8), cv2.RETR_TREE,
-                                                        cv2.CHAIN_APPROX_SIMPLE)
-                contours_poly = [None] * len(contours_p)
-                boundRect_p = [None] * len(contours_p)
-                for i, c in enumerate(contours_p):
-                    contours_poly[i] = cv2.approxPolyDP(c, 3, True)
-                    boundRect_p[i] = cv2.boundingRect(contours_poly[i])
-
-                image, contours_t, _ = cv2.findContours(np.array((y.cpu())[0, chan] * 255).astype(np.uint8),
-                                                        cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                contours_poly = [None] * len(contours_t)
-                boundRect_t = [None] * len(contours_t)
-                for i, c in enumerate(contours_t):
-                    contours_poly[i] = cv2.approxPolyDP(c, 3, True)
-                    boundRect_t[i] = cv2.boundingRect(contours_poly[i])
-
-                b = False
-                if b:
-                    drawing = np.zeros(((preds_dilation).astype(np.uint8).shape[0],
-                                        (preds_dilation).astype(np.uint8).shape[1], 3), dtype=np.uint8)
-
-                    for i in range(len(boundRect_p)):
-                        color = (random.randint(0, 256), random.randint(0, 256), random.randint(0, 256))
-                        cv2.drawContours(drawing, contours_poly, i, color)
-                        cv2.rectangle(drawing, (int(boundRect_p[i][0]), int(boundRect_p[i][1])), \
-                                     (int(boundRect_p[i][0] + boundRect_p[i][2]), int(boundRect_p[i][1] + boundRect_p[i][3])),
-                                     color, 2)
-
-                    cv2.imshow('image', drawing)
-                    cv2.waitKey(0)
-                    # cv2.destroyAllWindows()
-
-                    cv2.imshow('image', y)
-                    cv2.waitKey(0)
-                    # cv2.destroyAllWindows()
-
-
-                used = np.zeros(len(boundRect_t))
-
-                for i in range(len(boundRect_p)):  # distance between corners are less than sqrt(4^2+4^2)
-                    found = -1
-
-                    for k in range(len(boundRect_t)):
-                        if (
-                                (abs((boundRect_t[k][0] - boundRect_p[i][0])) < tresh) and
-                                (abs((boundRect_t[k][1] - boundRect_p[i][1])) < tresh) and
-                                (abs((boundRect_t[k][2] - boundRect_p[i][2])) < tresh) and
-                                (abs((boundRect_t[k][3] - boundRect_p[i][3])) < tresh)):
-                            found = k
-                            true += 1
-
-                    if found == -1:
-                        f_p += 1
-                        #total += 1
-                    else:
-                        used[found] = 1
-                f_n += np.count_nonzero(used == 0)
-                #acc_chan[chan] = (true + 0.001) / ((true + f_n + f_p) + 0.001)
-
-            #acc += acc_chan.sum() / acc_chan.size
-            #total += 1
-
-        acc = true/(true+f_n+f_p)
-        print('True: ',true, '\t FP: ',f_p,'\t FN: ',f_n)
-    return true_y, pred_y, acc
-
-
-def calc(dataloader):
-    """
-    Calculate accuracy of predictions from model for dataloader.
-    :param dataloader: dataloader to evaluate
-    :return:
-    """
-    acc = 0.0
-    true_y = []
-    pred_y = []
-    total = 0.0
-    model.eval()
-
-    with torch.no_grad():
-        for batch_id, (x, y) in enumerate(dataloader):
-            x = x.cuda()
-            y = y.cuda().cpu()
-            y = F.pad(y, (4, 5, 7, 6, 0, 0, 0, 0), mode='constant', value=0)
-            for b in range(2):
-                for i in range(4):
-                    preds = np.array(model(x).cpu()[b][i])
-                    targets = np.array(y[b][i])
-                    # preds = np.max(np.array((preds)), axis=1)
-
-                    (thresh, preds) = cv2.threshold(preds, 0.4, 255, 0)
-
+                    # Erosion
                     kernel = np.ones((3, 3), np.uint8)
-                    preds_erosion = cv2.erode(preds, kernel, iterations=1)
+                    (_, preds_thresh) = cv2.threshold(preds[b_id, chan], gray_thresh, 255, 0)
+                    preds_erosion = cv2.erode(preds_thresh, kernel, iterations=1)
 
                     # Dilation
                     preds_dilation = cv2.dilate(preds_erosion, kernel, iterations=1)
 
-                    cv2.imshow('image', preds)
-                    cv2.waitKey(0)
-                    # cv2.destroyAllWindows()
+                    image, contours_p, _ = cv2.findContours(preds_dilation.astype(np.uint8), cv2.RETR_TREE,
+                                                            cv2.CHAIN_APPROX_SIMPLE)
+                    contours_poly = [None] * len(contours_p)
+                    boundRect_p = [None] * len(contours_p)
+                    for i, c in enumerate(contours_p):
+                        contours_poly[i] = cv2.approxPolyDP(c, 3, True)
+                        boundRect_p[i] = cv2.boundingRect(contours_poly[i])
 
-                    cv2.imshow('image', preds_dilation)
-                    cv2.waitKey(0)
-                    # cv2.destroyAllWindows()
+                    image, contours_t, _ = cv2.findContours(np.array((y.cpu())[0, chan] * 255).astype(np.uint8),
+                                                            cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    contours_poly = [None] * len(contours_t)
+                    boundRect_t = [None] * len(contours_t)
+                    for i, c in enumerate(contours_t):
+                        contours_poly[i] = cv2.approxPolyDP(c, 3, True)
+                        boundRect_t[i] = cv2.boundingRect(contours_poly[i])
 
-                    cv2.imshow('image', targets)
-                    cv2.waitKey(0)
-                    # cv2.destroyAllWindows()
+                    if itr == 20:
+                        drawing = np.zeros((preds_dilation.astype(np.uint8).shape[0],
+                                            preds_dilation.astype(np.uint8).shape[1], 3), dtype=np.uint8)
 
-            pass
+                        for i in range(len(boundRect_p)):
+                            color = (random.randint(0, 256), random.randint(0, 256), random.randint(0, 256))
+                            cv2.drawContours(drawing, contours_poly, i, color)
+                            cv2.rectangle(drawing, (int(boundRect_p[i][0]), int(boundRect_p[i][1])),
+                                          (int(boundRect_p[i][0] + boundRect_p[i][2]),
+                                           int(boundRect_p[i][1] + boundRect_p[i][3])),
+                                          color, 2)
+
+                        cv2.imshow('image', drawing)
+                        cv2.waitKey(0)
+                        # cv2.destroyAllWindows()
+
+                        cv2.imshow('image', y)
+                        cv2.waitKey(0)
+                        # cv2.destroyAllWindows()
+
+                    used = np.zeros(len(boundRect_t))
+                    for i in range(len(boundRect_p)):
+
+                        found = -1
+
+                        for k in range(len(boundRect_t)):
+                            x_t = min(boundRect_t[k][0], boundRect_t[k][1]) + abs(
+                                (boundRect_t[k][0] - boundRect_t[k][1])) / 2
+                            y_t = min(boundRect_t[k][2], boundRect_t[k][3]) + abs(
+                                (boundRect_t[k][2] - boundRect_t[k][3])) / 2
+
+                            x_p = min(boundRect_p[i][0], boundRect_p[i][1]) + abs(
+                                (boundRect_p[i][0] - boundRect_p[i][1])) / 2
+                            y_p = min(boundRect_p[i][2], boundRect_p[i][3]) + abs(
+                                (boundRect_p[i][2] - boundRect_p[i][3])) / 2
+
+                            if (
+                                    abs(x_t - x_p) < tresh and
+                                    abs(y_t - y_p) < tresh):
+                                found = k
+                                true[chan] += 1
+                                # break
+
+                        if found == -1:
+                            f_p[chan] += 1
+                        else:
+                            used[found] = 1
+                    f_n[chan] += np.count_nonzero(used == 0)
+                    # acc_chan[chan] = (true + 0.001) / ((true + f_n + f_p) + 0.001)
+
+                # acc += acc_chan.sum() / acc_chan.size
+                # total += 1
+
+        acc = np.average(true) / (np.average(true) + np.average(f_n) + np.average(f_p))
+    return true_y, pred_y, acc, true, f_p, f_n
+
 
 
 batch_size = 2
-n_itr = 25
+n_itr = 40
 lr = 0.001
 
 trainset = CudaVisionDataset(dir_path='./data/train')  # (image, target) set
-testset = CudaVisionDataset(dir_path='./data/test')  # (image, target) set
+testset = CudaVisionDataset(dir_path='./data/test')  # CudaVisionDataset(dir_path='./data/test')  # (image, target) set
 
 train_split, valid_split = random_split(trainset, [int(len(trainset) * 0.8),
                                                    int(len(trainset) - (len(trainset) * 0.8))])
@@ -284,12 +231,21 @@ optim = torch.optim.Adam
 model.train()
 loss = nn.MSELoss()
 optimizer = optim(model.parameters(), lr=lr)
-loss_list, train_acc, valid_acc = train(train_dataloader, valid_dataloader,
-                                        iters=n_itr, model_save_path="model1.pth")
-# t1 = time.time()
-#
+
+loss_list = np.zeros(5)
+_, train_acc, valid_acc, t_p, f_p, f_n = train(train_dataloader, valid_dataloader,
+                                               iters=n_itr, model_save_path="model1.pth")
+
+t1 = time.time()
+
 # _, _, test_acc = acc(valid_dataloader)
-# print("Time to converge: {} sec".format(t1))
-# print("Best train accuracy={}, valid accuracy={} (based on the later)".
-#       format(train_acc, valid_acc))
+
+
+f_detection = 1 - (t_p / (t_p + f_p + 1))
+recall = t_p / (t_p + f_n + 1)
+
+print("Time to converge: {} sec".format(t1))
+print("Best train accuracy={}, valid accuracy={}, false detection={}, recall={} ".
+      format(train_acc, valid_acc, f_detection, recall))
+
 # print("Test accuracy on best model={}".format(test_acc))
