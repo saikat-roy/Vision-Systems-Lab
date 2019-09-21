@@ -30,8 +30,6 @@ class CudaVisionDataset(Dataset):
         img = cv2.imread(self.img_paths[index], 1)
         # print(img.shape) # Shape is l x w x c
         l,w,c = img.shape
-        img = cv2.resize(img, dsize=(480,640))
-        # print(img.shape)
         # cv2.imshow('image', img)
         # cv2.waitKey()
 
@@ -152,12 +150,11 @@ def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_fold
 
     return img_paths, annot_paths
 
-#
+
 # if __name__ == "__main__":
 #     # read_files('./data/Images')
 #     # parse_annotations('./igus Humanoid Open Platform 331.json')
-#
-#     # dataset = CudaVisionDataset('/content/gdrive/My Drive/CUDA_Lab_Final_Project_Dataset/Albert_Saikat')
-#     dataset = CudaVisionDataset('./data/')
+
+#     dataset = CudaVisionDataset('/content/gdrive/My Drive/CUDA_Lab_Final_Project_Dataset/Albert_Saikat')
 #     for i in enumerate(dataset):
 #         print(0)
