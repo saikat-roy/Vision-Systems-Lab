@@ -87,7 +87,7 @@ class Resnet18Decoder(nn.Module):
         x = self.convtrans2(self.bn2(F.relu(x)))
 #         x1 = F.pad(x1, (3, 4, 4, 3, 0, 0, 0, 0), mode='constant', value=0)
         x = x[:,:,3:123,3:163]
-        print(x.size(), x1.size())
+        # print(x.size(), x1.size())
         x = torch.cat((x, x1), dim=1)
         #print(x.size())
         x = self.convtrans1(self.bn1(F.relu(x)))
@@ -227,7 +227,7 @@ class DenseNetDecoder(nn.Module):
         x = self.convtrans2(self.bn2(F.relu(x)))
         #         x1 = F.pad(x1, (3, 4, 6, 5, 0, 0, 0, 0), mode='constant', value=0)
         x = x[:, :, 23:168, 13:173]
-        print(x.size(), x1.size())
+        # print(x.size(), x1.size())
         x = torch.cat((x, x1), dim=1)
         # print(x.size())
         x = self.conv1(self.bn1(F.relu(x)))
@@ -252,7 +252,7 @@ class DenseNimbroNet(nn.Module):
         x = self.decoder(x1, x2, x3, x4, x5)
         return x
 
-
-if __name__ == "__main__":
-    m = Resnet18NimbroNet()
-
+#
+# if __name__ == "__main__":
+#     m = Resnet18NimbroNet()
+#
