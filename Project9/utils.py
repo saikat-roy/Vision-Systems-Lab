@@ -63,7 +63,7 @@ class CudaVisionDataset(Dataset):
 
         img = torch.Tensor(img)
         targets = torch.Tensor(targets)
-        
+
         return img, targets
 
 
