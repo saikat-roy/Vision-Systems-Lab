@@ -6,11 +6,11 @@ import numpy as np
 import cv2
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
 
 class CudaVisionDataset(Dataset):
 
-    def __init__(self, dir_path, no_of_classes=4, channel_lut=None, blob_rad = 15):
+    def __init__(self, dir_path, no_of_classes=4,
+                 channel_lut=None, blob_rad = 8):
         """
         :param dir_path:
         :param no_of_classes:
@@ -27,7 +27,7 @@ class CudaVisionDataset(Dataset):
 
     def __getitem__(self, index):
         #print(index)
-        img = cv2.imread(self.img_paths[index],1)
+        img = cv2.imread(self.img_paths[index], 1)
         # print(img.shape) # Shape is l x w x c
         l,w,c = img.shape
         # cv2.imshow('image', img)
@@ -59,9 +59,6 @@ class CudaVisionDataset(Dataset):
         img = np.moveaxis(img,2,0) # cv2 images are l X w X c
 
         img = torch.Tensor(img)
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                         std=[0.229, 0.224, 0.225])
-        img = normalize(img)
         targets = torch.Tensor(targets)
 
         return img, targets
@@ -124,7 +121,6 @@ def parse_annotations(fname):
 def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_folder_name='json'):
     img_paths = []
     annot_paths = []
-
     #img_dir_path += '/Images/'
     if os.path.isdir(img_dir_path):
         print("Folder exists. Reading..")
@@ -141,24 +137,24 @@ def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_fold
         f_split = f.split("/")
         f_split[-1] = f_split[-1].replace(img_format, annot_format)
         f_split[-2] = annot_folder_name
-        # print(f_split)
+        #print(f_split)
         annot_path = os.path.join(*f_split)
 
         if os.path.exists(annot_path):
             annot_paths.append(annot_path)
         else:
-            print("{} does not exist. Please verify.".format())
+            print(annot_path)
+            print("{} does not exist. Please verify.")
             exit(1)
             del_index.append(index)
 
     return img_paths, annot_paths
 
 
-if __name__ == "__main__":
-    # read_files('./data/Images')
-    # parse_annotations('./igus Humanoid Open Platform 331.json')
+# if __name__ == "__main__":
+#     # read_files('./data/Images')
+#     # parse_annotations('./igus Humanoid Open Platform 331.json')
 
-    dataset = CudaVisionDataset('./data/Images')
-    for i in enumerate(dataset):
-        print(0)
-
+#     dataset = CudaVisionDataset('/content/gdrive/My Drive/CUDA_Lab_Final_Project_Dataset/Albert_Saikat')
+#     for i in enumerate(dataset):
+#         print(0)
