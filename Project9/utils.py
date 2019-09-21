@@ -29,23 +29,26 @@ class CudaVisionDataset(Dataset):
         #print(index)
         img = cv2.imread(self.img_paths[index], 1)
         # print(img.shape) # Shape is l x w x c
-        l,w,c = img.shape
+        img = cv2.resize(img, dsize=(480,640))
+        l, w, c = img.shape
+        l=l/4
+        w=w/4
+        # print(img.shape)
         # cv2.imshow('image', img)
         # cv2.waitKey()
-
         annot = parse_annotations(self.annot_paths[index])
 
-        targets = np.zeros((self.no_of_classes, l, w), dtype='float')
+        targets = np.zeros((self.no_of_classes, int(l), int(w)), dtype='float')
 
         for k in annot.keys():
             # print(annot[k])
             for p in annot[k]:
-                targets[self.channel_lut[k], int(p[0]), int(p[1])] = 1.0
+                targets[self.channel_lut[k], int(p[0]*0.667*0.25), int(p[1]*0.667*0.25)] = 1.0
 
         # print(targets.shape)
         targets = torch.Tensor(targets)
-        downsampler = torch.nn.MaxPool2d(kernel_size=4, stride=4, padding=0)
-        targets = downsampler(targets).numpy()
+        # downsampler = torch.nn.MaxPool2d(kernel_size=4, stride=4, padding=0)
+        # targets = downsampler(targets).numpy()
         # print(targets.shape)
 
         gaussian_2d = define_2d_gaussian(rad=self.blob_rad)
@@ -151,10 +154,11 @@ def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_fold
     return img_paths, annot_paths
 
 
-# if __name__ == "__main__":
-#     # read_files('./data/Images')
-#     # parse_annotations('./igus Humanoid Open Platform 331.json')
+if __name__ == "__main__":
+    # read_files('./data/Images')
+    # parse_annotations('./igus Humanoid Open Platform 331.json')
 
-#     dataset = CudaVisionDataset('/content/gdrive/My Drive/CUDA_Lab_Final_Project_Dataset/Albert_Saikat')
-#     for i in enumerate(dataset):
-#         print(0)
+    # dataset = CudaVisionDataset('/content/gdrive/My Drive/CUDA_Lab_Final_Project_Dataset/Albert_Saikat')
+    dataset = CudaVisionDataset('./data/')
+    for i in enumerate(dataset):
+        print(0)

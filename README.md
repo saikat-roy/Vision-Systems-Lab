@@ -1,4 +1,7 @@
 # Vision Systems Lab: Learning Computer Vision on GPUs [Readme not updated regularly]
+
+Authors: Saikat Roy, [Albert Gubaidullin](https://github.com/Olbert)
+
 Repository of the CudaVision Lab at University of Bonn (SS19) implemented (mostly) on PyTorch, Python3 and Jupyter notebooks. The project begins from the basics of neural networks and continues to deeper models. The following projects are contained in the respective folders:
 
 ### Project 1: Softmax Regression (without autograd/Pytorch Tensors)
@@ -20,5 +23,15 @@ Also tested were different non-linearities for the hidden units.
 
 In each case, the results were kind of counterintuitive as `SGD` and `sigmoid` performed the best. However, it might be possible that the convergence rates simply might be different. Additionally, with the network being this shallow, the benefits of the non-linearities used typically in 'Deep' networks might simply not reflect on a network of this scale. And if run long enough, `SGD` generally converges to a better minima than other optimizers like `Adam`.
 
-### Project 4: Convolutional Neural Networks
+### Project 4: (Deep) Convolutional Neural Networks
 The project introduces one to convolutional neural networks and applied a CNN on the CIFAR-10 dataset.
+
+### Project 5: Deep(er) Networks using Residual Connections
+
+### Project 6: Autoencoders (Convolutional, Denoising)
+
+### Project 7: LSTM and GRU (Manual Implementation using PyTorch)
+
+### Project 8: Deep Convolutional GAN
+
+### Project 9: Humanoid Robot Body Part Detection with Pretrained Encoders
