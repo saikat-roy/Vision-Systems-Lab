@@ -1,4 +1,10 @@
+import sys
 
+sys.path.append("E:/Vision-Systems-Lab/Project9/")
+
+from model import *
+from utils import *
+from train import *
 #from google.colab.patches import cv2_imshow
 import cv2
 
