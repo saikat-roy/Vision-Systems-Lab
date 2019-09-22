@@ -6,11 +6,13 @@ import numpy as np
 import cv2
 import torch
 from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
+
 
 class CudaVisionDataset(Dataset):
 
     def __init__(self, dir_path, no_of_classes=4,
-                 channel_lut=None, blob_rad = 4):
+                 channel_lut=None, blob_rad=8):
         """
         :param dir_path:
         :param no_of_classes:
@@ -18,22 +20,22 @@ class CudaVisionDataset(Dataset):
         :param blob_rad: Try to keep odd
         """
         super(CudaVisionDataset, self).__init__()
-        self.img_paths, self.annot_paths = read_files(img_dir_path = dir_path)
+        self.img_paths, self.annot_paths = read_files(img_dir_path=dir_path)
         self.no_of_classes = no_of_classes
         if channel_lut is None:
-            channel_lut = {'Head':0, 'Hand':1, 'Leg':2, 'Trunk':3}
+            channel_lut = {'Head': 0, 'Hand': 1, 'Leg': 2, 'Trunk': 3}
         self.channel_lut = channel_lut
         self.blob_rad = blob_rad
 
     def __getitem__(self, index):
-        #print(index)
+        # print(index)
         img = cv2.imread(self.img_paths[index], 1)
         # print(img.shape) # Shape is l x w x c
-        old_ratio = [img.shape[0],img.shape[1]]
-        img = cv2.resize(img, dsize=(640,480))
+        old_ratio = [img.shape[0], img.shape[1]]
+        img = cv2.resize(img, dsize=(640, 480))
         l, w, c = img.shape
-        l=l/4
-        w=w/4
+        l = l / 4
+        w = w / 4
         # print(img.shape)
         # cv2.imshow('image', img)
         # cv2.waitKey()
@@ -44,7 +46,8 @@ class CudaVisionDataset(Dataset):
         for k in annot.keys():
             # print(annot[k])
             for p in annot[k]:
-                targets[self.channel_lut[k], int(p[0]*(480/old_ratio[0])*0.25), int(p[1]*(640/old_ratio[1])*0.25)] = 1.0
+                targets[self.channel_lut[k], int(p[0] * (480 / old_ratio[0]) * 0.25), int(
+                    p[1] * (640 / old_ratio[1]) * 0.25)] = 1.0
 
         # print(targets.shape)
         targets = torch.Tensor(targets)
@@ -53,20 +56,26 @@ class CudaVisionDataset(Dataset):
         # print(targets.shape)
 
         gaussian_2d = define_2d_gaussian(rad=self.blob_rad)
-        target_coords_downsampled = np.where(targets==1)
+
+        target_coords_downsampled = np.where(targets == 1)
         # print(np.where(targets==1))
         for i in range(target_coords_downsampled[0].shape[0]):
             targets[target_coords_downsampled[0][i]] = centre_and_place(targets[target_coords_downsampled[0][i]],
-                                                    gaussian_2d, self.blob_rad, (target_coords_downsampled[1][i],
-                                                    target_coords_downsampled[2][i]))
+                                                                        gaussian_2d, self.blob_rad,
+                                                                        (target_coords_downsampled[1][i],
+                                                                         target_coords_downsampled[2][i]))
 
-        img = np.moveaxis(img,2,0) # cv2 images are l X w X c
+        img = np.moveaxis(img, 2, 0)  # cv2 images are l X w X c
 
         img = torch.Tensor(img)
+        # Normalization for torchvision pretrained models
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+        img = normalize(img)
+
         targets = torch.Tensor(targets)
 
         return img, targets
-
 
     def __len__(self):
         return len(self.img_paths)
@@ -80,42 +89,56 @@ class CudavisionDataloader:
 
 
 def centre_and_place(arr, g, rad, coords):
-
-    lt = int(rad/2)
-    rt = int(rad/2)+1
-    if rad%2==0:
+    lt = int(rad / 2)
+    rt = int(rad / 2) + 1
+    if rad % 2 == 0:
         rt -= 1
     # print(max(0,coords[0]-lt), min(arr.shape[0],coords[0]+rt),
     #     max(0,coords[1]-lt), min(arr.shape[1],coords[1]+rt))
-    arr[max(0,coords[0]-lt): min(arr.shape[0],coords[0]+rt),
-    max(0,coords[1]-lt): min(arr.shape[1],coords[1]+rt)] = torch.Tensor(g)
+
+    #     if arr[max(0,coords[0]-lt): min(arr.shape[0],coords[0]+rt),
+    #     max(0,coords[1]-lt): min(arr.shape[1],coords[1]+rt)].shape != (8,8):
+    #       print(arr[max(0,coords[0]-lt): min(arr.shape[0],coords[0]+rt),
+    #     max(0,coords[1]-lt): min(arr.shape[1],coords[1]+rt)])
+
+    x = abs(max(0, coords[0] - lt) - min(arr.shape[0], coords[0] + rt))
+    y = abs(max(0, coords[1] - lt) - min(arr.shape[1], coords[1] + rt))
+    #     print(g.shape, x, y)
+
+    arr[max(0, coords[0] - lt): min(arr.shape[0], coords[0] + rt),
+    max(0, coords[1] - lt): min(arr.shape[1], coords[1] + rt)] = torch.Tensor(g[0:x, 0:y])
 
     return arr
 
-def define_2d_gaussian(rad=5, mu=0.0, sigma=8.0):
 
+def define_2d_gaussian(rad=5, mu=0.0, sigma=8.0):
     x, y = np.meshgrid(np.linspace(-1, 1, rad), np.linspace(-1, 1, rad))
     d = np.sqrt(x * x + y * y)
     sigma, mu = 1.0, 0.0
     g = np.exp(-((d - mu) ** 2 / (2.0 * sigma ** 2)))
+    #     if g.shape != (8,8):
+    #       print(g.shape)
+    #       print(x)
+    #       print(y)
     return g
+
 
 def parse_annotations(fname):
     with open(fname) as f:
         data = json.load(f)
 
     data = data['shapes']
-    dpoints = {'Head':np.array([]), 'Hand': np.array([]), 'Leg': np.array([]), 'Trunk': np.array([])}
+    dpoints = {'Head': np.array([]), 'Hand': np.array([]), 'Leg': np.array([]), 'Trunk': np.array([])}
     for d in data:
         # print(d)
         label = d['label']
         bbox_coords = np.array(d['points'])
-        mid = (bbox_coords[0]+bbox_coords[1])/2
+        mid = (bbox_coords[0] + bbox_coords[1]) / 2
         # print(bbox_coords, mid)
         dpoints[label] = np.append(dpoints[label], mid[::-1], axis=0)
 
     for k in dpoints.keys():
-        dpoints[k] = dpoints[k].reshape((-1,2))
+        dpoints[k] = dpoints[k].reshape((-1, 2))
         # print(bbox_coords)
         # points
     # print(dpoints)
@@ -125,7 +148,7 @@ def parse_annotations(fname):
 def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_folder_name='json'):
     img_paths = []
     annot_paths = []
-    #img_dir_path += '/Images/'
+    # img_dir_path += '/Images/'
     if os.path.isdir(img_dir_path):
         print("Folder exists. Reading..")
 
@@ -141,8 +164,8 @@ def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_fold
         f_split = f.split("/")
         f_split[-1] = f_split[-1].replace(img_format, annot_format)
         f_split[-2] = annot_folder_name
-        #print(f_split)
-        annot_path = os.path.join(*f_split)
+        # print(f_split)
+        annot_path = '/' + os.path.join(*f_split)
 
         if os.path.exists(annot_path):
             annot_paths.append(annot_path)
@@ -154,12 +177,11 @@ def read_files(img_dir_path, img_format='.jpg', annot_format='.json', annot_fold
 
     return img_paths, annot_paths
 
+# if __name__ == "__main__":
+#     # read_files('./data/Images')
+#     # parse_annotations('./igus Humanoid Open Platform 331.json')
 
-if __name__ == "__main__":
-    # read_files('./data/Images')
-    # parse_annotations('./igus Humanoid Open Platform 331.json')
-
-    # dataset = CudaVisionDataset('/content/gdrive/My Drive/CUDA_Lab_Final_Project_Dataset/Albert_Saikat')
-    dataset = CudaVisionDataset('./data/')
-    for i in enumerate(dataset):
-        print(0)
+#     # dataset = CudaVisionDataset('/content/gdrive/My Drive/CUDA_Lab_Final_Project_Dataset/Albert_Saikat')
+#     dataset = CudaVisionDataset('./data/')
+#     for i in enumerate(dataset):
+#         print(0)

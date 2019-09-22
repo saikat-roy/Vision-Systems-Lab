@@ -5,12 +5,15 @@ import torch.nn.functional as F
 from torchvision.models.resnet import ResNet, BasicBlock
 from torchvision.models.densenet import DenseNet
 
+
 def convtrans3x3(in_channels, out_channels, stride=2, padding=0):
     return nn.ConvTranspose2d(in_channels, out_channels, kernel_size=3,
                               stride=stride, padding=padding)
 
+
 def conv1x1(in_channels, out_channels, stride=1):
     return nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride)
+
 
 class Resnet18Encoder(ResNet):
 
@@ -18,17 +21,19 @@ class Resnet18Encoder(ResNet):
         # Initializing Resnet18 using similar initializations as torch model zoo
         super(Resnet18Encoder, self).__init__(BasicBlock, [2, 2, 2, 2], *args, **kwargs)
 
-        #print(list(self.children()))
+        # print(list(self.children()))
         # Loading from pretrained model
-        self.load_state_dict(torch.load('./resnet18-5c106cde.pth'))
-
-        # Deleting unncessary layers
-        del self.avgpool
-        del self.fc
+        self.load_state_dict(torch.load('/content/gdrive/My Drive/resnet18-5c106cde.pth'))
 
         # Can freeze training if needed
         if freeze:
             self.freeze()
+
+        self.inp_drop = nn.Dropout2d(0.4)
+
+        # Deleting unncessary layers
+        del self.avgpool
+        del self.fc
 
     def freeze(self):
         # Freezes the weights of the entire encoder
@@ -43,6 +48,8 @@ class Resnet18Encoder(ResNet):
                 param.requires_grad = True
 
     def forward(self, x):
+
+        x = self.inp_drop(x)
         # Overriding the forward method
         x = self.conv1(x)
         x = self.bn1(x)
@@ -59,6 +66,7 @@ class Resnet18Encoder(ResNet):
         # x = self.fc(x)
         return x1, x2, x3, x4
 
+
 class Resnet18Decoder(nn.Module):
 
     def __init__(self):
@@ -72,37 +80,37 @@ class Resnet18Decoder(nn.Module):
         self.bn1 = nn.BatchNorm2d(256)
 
     def forward(self, x1, x2, x3, x4):
-
-        x = self.convtrans4(F.relu(x4, inplace=True))
+        x = self.convtrans4(F.relu(x4))
         x3 = F.pad(x3, (1, 0, 1, 0, 0, 0, 0, 0), mode='constant', value=0)
-#         print(x.size(), x3.size())
+        #         print(x.size(), x3.size())
         x = torch.cat((x, x3), dim=1)
-        #print(x.size())
+        # print(x.size())
         # NOT sure if relu should go first or bn here. Fig says relu
         x = self.convtrans3(self.bn3(F.relu(x)))
         x2 = F.pad(x2, (1, 2, 1, 2, 0, 0, 0, 0), mode='constant', value=0)
-#         print(x.size(), x2.size())
+        #         print(x.size(), x2.size())
         x = torch.cat((x, x2), dim=1)
-        #print(x.size())
+        # print(x.size())
         x = self.convtrans2(self.bn2(F.relu(x)))
-#         x1 = F.pad(x1, (3, 4, 4, 3, 0, 0, 0, 0), mode='constant', value=0)
-        x = x[:,:,3:123,3:163]
+        #         x1 = F.pad(x1, (3, 4, 4, 3, 0, 0, 0, 0), mode='constant', value=0)
+        x = x[:, :, 3:123, 3:163]
         # print(x.size(), x1.size())
         x = torch.cat((x, x1), dim=1)
-        #print(x.size())
+        # print(x.size())
         x = self.convtrans1(self.bn1(F.relu(x)))
 
-        #print(x.size())
+        # print(x.size())
         return x
+
 
 class Resnet18NimbroNet(nn.Module):
 
-    def __init__(self):
+    def __init__(self, freeze=True):
         super(Resnet18NimbroNet, self).__init__()
         self.res1 = conv1x1(64, 128)
         self.res2 = conv1x1(128, 128)
         self.res3 = conv1x1(256, 128)
-        self.encoder = Resnet18Encoder(freeze=True)
+        self.encoder = Resnet18Encoder(freeze=freeze)
         self.decoder = Resnet18Decoder()
 
     def forward(self, x):
@@ -124,7 +132,7 @@ class DenseNet121Encoder(DenseNet):
         # print(list(self.children()))
         # Loading from pretrained model
         # print(list(torch.load('./densenet121-a639ec97.pth')))
-        self._load_state_dict('./densenet121-a639ec97.pth')
+        self._load_state_dict('/content/gdrive/My Drive/densenet121-a639ec97.pth')
 
         #         a = self.features
         #         print(type(a), a)
@@ -186,7 +194,7 @@ class DenseNet121Encoder(DenseNet):
         x4 = self.block4(x3)
         x5 = self.block5(x4)
 
-        print(x1.size(), x2.size(), x3.size(), x4.size(), x5.size())
+        # print(x1.size(), x2.size(), x3.size(), x4.size(), x5.size())
         # x = self.avgpool(x)
         # x = torch.flatten(x, 1)
         # x = self.fc(x)
@@ -208,12 +216,12 @@ class DenseNetDecoder(nn.Module):
         self.bn1 = nn.BatchNorm2d(128)
 
     def forward(self, x1, x2, x3, x4, x5):
-        x = self.convtrans5(F.relu(x5, inplace=True))
+        x = self.convtrans5(F.relu(x5))
         x4 = F.pad(x4, (1, 1, 1, 1, 0, 0, 0, 0), mode='constant', value=0)
         #         print(x.size(), x4.size())
         x = torch.cat((x, x4), dim=1)
 
-        x = self.convtrans4(F.relu(x, inplace=True))
+        x = self.convtrans4(self.bn4(F.relu(x)))
         x3 = F.pad(x3, (2, 3, 2, 3, 0, 0, 0, 0), mode='constant', value=0)
         #         print(x.size(), x3.size())
         x = torch.cat((x, x3), dim=1)
