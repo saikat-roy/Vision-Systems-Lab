@@ -2,8 +2,8 @@ import sys
 
 sys.path.append("E:/Vision-Systems-Lab/Project9/")
 
-from model import NimbroNet
-from utils import CudaVisionDataset
+from model import *
+from utils import *
 
 import numpy as np
 from torch.utils.data import dataloader, random_split
@@ -13,12 +13,84 @@ import torch.nn.functional as F
 
 import cv2
 import time
-import matplotlib
 import random
+
+import matplotlib
+import matplotlib.pyplot as plt
+
 
 random.seed(12345)
 np.set_printoptions(threshold=sys.maxsize)
 
+def picture(dataloader):
+    acc = 0.0
+    true_y = []
+    pred_y = []
+    total = 0.0
+    model.eval()
+
+    with torch.no_grad():
+        for batch_id, (x, y) in enumerate(dataloader):
+            if (batch_id == 1):
+                x = x.cuda()
+                y = y.cuda()
+
+                drawing_t = x[0].cpu().numpy()
+                drawing_p = x[0].cpu().numpy()
+
+                for chan in range(4):
+                    preds = np.array(model(x).cpu()[0][chan])
+                    targets = np.array(y.cpu()[0][chan])
+
+                    # (thresh, preds) = cv2.threshold(preds, 0.4, 255, 0)
+
+                    kernel = np.ones((3, 3), np.uint8)
+                    # Erosion
+
+                    (_, preds_thresh) = cv2.threshold(preds, 0.4, 255, 0)
+                    preds_erosion = cv2.erode(preds_thresh, kernel, iterations=1)
+
+                    # Dilation
+                    preds_dilation = cv2.dilate(preds_erosion, kernel, iterations=1)
+
+                    # Contour Detection
+
+                    image, contours_p, _ = cv2.findContours((preds_dilation).astype(np.uint8), cv2.RETR_TREE,
+                                                            cv2.CHAIN_APPROX_SIMPLE)
+                    contours_poly = [None] * len(contours_p)
+                    boundRect_p = [None] * len(contours_p)
+                    centers_p = [None] * len(contours_p)
+                    radius_p = [None] * len(contours_p)
+
+                    for i, c in enumerate(contours_p):
+                        contours_poly[i] = cv2.approxPolyDP(c, 3, True)
+                        centers_p[i], radius_p[i] = cv2.minEnclosingCircle(contours_poly[i])
+
+                    for i in range(len(boundRect_p)):
+                        cv2.circle(drawing_p, (int(centers_p[i][0] * 4) - 9, int(centers_p[i][1] * 4) - 13), int(8),
+                                   (255, 152, 30), 15)
+
+                    image, contours_t, _ = cv2.findContours(np.array((y.cpu())[0, chan] * 255).astype(np.uint8),
+                                                            cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                    contours_poly = [None] * len(contours_t)
+                    boundRect_t = [None] * len(contours_t)
+                    centers_t = [None] * len(contours_t)
+                    radius_t = [None] * len(contours_t)
+
+                    for i, c in enumerate(contours_t):
+                        contours_poly[i] = cv2.approxPolyDP(c, 3, True)
+                        centers_t[i], radius_t[i] = cv2.minEnclosingCircle(contours_poly[i])
+
+                    for i in range(len(boundRect_t)):
+                        cv2.circle(drawing_t, (int(centers_t[i][0] * 4), int(centers_t[i][1] * 4)), int(8), (255, 0, 0),
+                                   15)
+
+
+                cv2.imshow('image1',np.moveaxis(drawing_t, 0, -1)/255)
+                cv2.imshow('image2',np.moveaxis(drawing_p, 0, -1)/255)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+                pass
 
 def train(train_dataloader, valid_dataloader, iters=20, suppress_output=False,
           gray_thresh=0, model_save_path="best.pth"):
@@ -33,6 +105,12 @@ def train(train_dataloader, valid_dataloader, iters=20, suppress_output=False,
     best_false_positive = 0.0
     best_true_positive = 0.0
     best_false_negative = 0.0
+
+    plt.ion()
+    plt.show()
+    plt.ylim(0,1)
+    p1 = []
+    p2 = []
     for itr in range(iters):
         av_itr_loss = 0.0
         model.train()
@@ -42,7 +120,7 @@ def train(train_dataloader, valid_dataloader, iters=20, suppress_output=False,
             y = y.cuda()
             preds = model(x)
 
-            y = F.pad(y, (4, 5, 7, 6, 0, 0, 0, 0), mode='constant', value=0)
+            #y = F.pad(y, (4, 5, 7, 6, 0, 0, 0, 0), mode='constant', value=0)
             batch_loss = loss(preds, y)  # ????
             batch_loss.backward()
             optimizer.step()
@@ -69,9 +147,21 @@ def train(train_dataloader, valid_dataloader, iters=20, suppress_output=False,
             valid_acc_l.append(valid_acc)
             torch.save(model.state_dict(), model_save_path)
 
+        f_detection = 1 - (t_p / (t_p + f_p + 1))
+        recall = t_p / (t_p + f_n + 1)
+        p1 += [f_detection]
+        p2 += [recall]
+
+        plt.subplot(2, 1, 1)
+        plt.plot(p1)
+        plt.title('False Detection')
+
+        plt.subplot(2, 1, 2)
+        plt.plot(p2)
+        plt.title('Recall')
+        plt.pause(0.5)
         #    model.load_state_dict(torch.load(model_save_path))
 
-    #   return loss_l, train_acc_l, valid_acc_l
     return loss_l, equiv_train_acc, best_valid_acc, best_true_positive, best_false_positive, best_false_negative
 
 
@@ -208,7 +298,7 @@ def acc(dataloader, itr, tresh=4, gray_thresh=0.4):
 
 
 batch_size = 2
-n_itr = 40
+n_itr = 1
 lr = 0.001
 
 trainset = CudaVisionDataset(dir_path='./data/train')  # (image, target) set
@@ -221,7 +311,7 @@ train_dataloader = torch.utils.data.DataLoader(train_split, batch_size=batch_siz
 valid_dataloader = torch.utils.data.DataLoader(valid_split, batch_size=batch_size, shuffle=True)
 test_dataloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=True)
 
-model = NimbroNet(4, 4)
+model = Resnet18NimbroNet()
 model = model.cuda()
 
 # torch.set_default_tensor_type(torch.cuda.FloatTensor)
@@ -249,3 +339,7 @@ print("Best train accuracy={}, valid accuracy={}, false detection={}, recall={} 
       format(train_acc, valid_acc, f_detection, recall))
 
 # print("Test accuracy on best model={}".format(test_acc))
+
+
+
+picture(test_dataloader)

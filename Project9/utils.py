@@ -29,7 +29,8 @@ class CudaVisionDataset(Dataset):
         #print(index)
         img = cv2.imread(self.img_paths[index], 1)
         # print(img.shape) # Shape is l x w x c
-        img = cv2.resize(img, dsize=(480,640))
+        old_ratio = [img.shape[0],img.shape[1]]
+        img = cv2.resize(img, dsize=(640,480))
         l, w, c = img.shape
         l=l/4
         w=w/4
@@ -43,7 +44,7 @@ class CudaVisionDataset(Dataset):
         for k in annot.keys():
             # print(annot[k])
             for p in annot[k]:
-                targets[self.channel_lut[k], int(p[0]*0.667*0.25), int(p[1]*0.667*0.25)] = 1.0
+                targets[self.channel_lut[k], int(p[0]*(480/old_ratio[0])*0.25), int(p[1]*(640/old_ratio[1])*0.25)] = 1.0
 
         # print(targets.shape)
         targets = torch.Tensor(targets)
@@ -87,7 +88,7 @@ def centre_and_place(arr, g, rad, coords):
     # print(max(0,coords[0]-lt), min(arr.shape[0],coords[0]+rt),
     #     max(0,coords[1]-lt), min(arr.shape[1],coords[1]+rt))
     arr[max(0,coords[0]-lt): min(arr.shape[0],coords[0]+rt),
-        max(0,coords[1]-lt): min(arr.shape[1],coords[1]+rt)] = g
+    max(0,coords[1]-lt): min(arr.shape[1],coords[1]+rt)] = torch.Tensor(g)
 
     return arr
 
