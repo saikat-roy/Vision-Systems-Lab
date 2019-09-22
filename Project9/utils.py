@@ -10,7 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 class CudaVisionDataset(Dataset):
 
     def __init__(self, dir_path, no_of_classes=4,
-                 channel_lut=None, blob_rad = 8):
+                 channel_lut=None, blob_rad = 4):
         """
         :param dir_path:
         :param no_of_classes:
